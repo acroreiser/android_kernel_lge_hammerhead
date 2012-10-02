@@ -1475,7 +1475,7 @@ long keyctl_session_to_parent(void)
 	if (!cred)
 		goto error_keyring;
 
-	cred->tgcred->session_keyring = key_ref_to_ptr(keyring_r);
+	cred->session_keyring = key_ref_to_ptr(keyring_r);
 	keyring_r = NULL;
 
 	me = current;
@@ -1498,7 +1498,7 @@ long keyctl_session_to_parent(void)
 	mycred = current_cred();
 	pcred = __task_cred(parent);
 	if (mycred == pcred ||
-	    mycred->tgcred->session_keyring == pcred->tgcred->session_keyring)
+	    mycred->session_keyring == pcred->session_keyring)
 		goto already_same;
 
 	/* the parent must have the same effective ownership and mustn't be
@@ -1512,9 +1512,9 @@ long keyctl_session_to_parent(void)
 		goto not_permitted;
 
 	/* the keyrings must have the same UID */
-	if ((pcred->tgcred->session_keyring &&
-	     pcred->tgcred->session_keyring->uid != mycred->euid) ||
-	    mycred->tgcred->session_keyring->uid != mycred->euid)
+	if ((pcred->session_keyring &&
+	     pcred->session_keyring->uid != mycred->euid) ||
+	    mycred->session_keyring->uid != mycred->euid)
 		goto not_permitted;
 
 	/* if there's an already pending keyring replacement, then we replace
