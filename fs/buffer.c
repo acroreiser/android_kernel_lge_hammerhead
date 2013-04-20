@@ -2963,6 +2963,11 @@ int submit_bh(int rw, struct buffer_head * bh)
 	bio->bi_end_io = end_bio_bh_io_sync;
 	bio->bi_private = bh;
 
+	if (buffer_meta(bh))
+		rw |= REQ_META;
+	if (buffer_prio(bh))
+		rw |= REQ_PRIO;
+
 	bio_get(bio);
 	submit_bio(rw, bio);
 
