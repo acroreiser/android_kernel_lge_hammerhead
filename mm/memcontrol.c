@@ -5656,6 +5656,9 @@ struct cgroup_subsys mem_cgroup_subsys = {
 	.can_attach = mem_cgroup_can_attach,
 	.cancel_attach = mem_cgroup_cancel_attach,
 	.attach = mem_cgroup_move_task,
+#ifdef CONFIG_CGROUP_NICE_ATTACH
+	.allow_attach = cgroup_nice_allow_attach,
+#endif
 	.early_init = 0,
 	.use_id = 1,
 };

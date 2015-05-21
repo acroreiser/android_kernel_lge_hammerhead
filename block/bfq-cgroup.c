@@ -847,6 +847,9 @@ struct cgroup_subsys bfqio_subsys = {
 	.create = bfqio_create,
 	.can_attach = bfqio_can_attach,
 	.attach = bfqio_attach,
+#ifdef CONFIG_CGROUP_NICE_ATTACH
+	.allow_attach = cgroup_nice_allow_attach,
+#endif
 	.destroy = bfqio_destroy,
 	.populate = bfqio_populate,
 	.subsys_id = bfqio_subsys_id,

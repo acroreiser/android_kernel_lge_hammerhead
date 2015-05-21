@@ -817,6 +817,13 @@ config CGROUP_BPF
           BPF_CGROUP_INET_INGRESS will be executed on the ingress path of
           inet sockets.
 
+config CGROUP_NICE_ATTACH
+	bool "Enabled Android-style loosening of perm checks for attachment"
+	default n
+	---help---
+	Allows non-root processes to add arbitrary processes to mem and cpu
+	cgroups if they have CAP_SYS_NICE set. This is useful for Android.
+
 endif # CGROUPS
 
 config CHECKPOINT_RESTORE
