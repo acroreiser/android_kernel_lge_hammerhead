@@ -1618,6 +1618,36 @@ static const struct alg_test_desc alg_test_descs[] = {
 			}
 		}
 	}, {
+		.alg = "adiantum(xchacha12,aes)",
+		.test = alg_test_skcipher,
+		.suite = {
+			.cipher = {
+				.enc = {
+					.vecs = adiantum_xchacha12_aes_enc_tv_template,
+					.count = ARRAY_SIZE(adiantum_xchacha12_aes_enc_tv_template),
+				},
+				.dec = {
+					.vecs = adiantum_xchacha12_aes_dec_tv_template,
+					.count = ARRAY_SIZE(adiantum_xchacha12_aes_dec_tv_template),
+				},
+			}
+		},
+	}, {
+		.alg = "adiantum(xchacha20,aes)",
+		.test = alg_test_skcipher,
+		.suite = {
+			.cipher = {
+				.enc = {
+					.vecs = adiantum_xchacha20_aes_enc_tv_template,
+					.count = ARRAY_SIZE(adiantum_xchacha20_aes_enc_tv_template),
+				},
+				.dec = {
+					.vecs = adiantum_xchacha20_aes_dec_tv_template,
+					.count = ARRAY_SIZE(adiantum_xchacha20_aes_dec_tv_template),
+				},
+			}
+		},
+	}, {
 		.alg = "ansi_cprng",
 		.test = alg_test_cprng,
 		.fips_allowed = 1,
