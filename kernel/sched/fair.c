@@ -1433,7 +1433,8 @@ static struct sched_entity *pick_next_entity(struct cfs_rq *cfs_rq)
 	 */
 	if (cfs_rq->skip == se) {
 		struct sched_entity *second = __pick_next_entity(se);
-		if (second && wakeup_preempt_entity(second, left) < 1)
+		if (second && (sched_feat(STRICT_SKIP_BUDDY) ||
+			wakeup_preempt_entity(second, left) < 1))
 			se = second;
 	}
 
