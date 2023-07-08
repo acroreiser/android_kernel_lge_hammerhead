@@ -1935,6 +1935,12 @@ int shmem_add_seals(struct file *file, unsigned int seals)
 	/* TODO: this is the place to actually apply seals to
 	 * file->f_mapping, but this was not backported yet */
 
+	/*
+	 * SEAL_EXEC implys SEAL_WRITE, making W^X from the start.
+	 */
+	if (seals & F_SEAL_EXEC && inode->i_mode & 0111)
+		seals |= F_SEAL_SHRINK|F_SEAL_GROW|F_SEAL_WRITE|F_SEAL_FUTURE_WRITE;
+
 	info->seals |= seals;
 	error = 0;
 
