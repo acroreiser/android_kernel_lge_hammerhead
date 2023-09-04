@@ -1812,3 +1812,9 @@ bool inode_owner_or_capable(const struct inode *inode)
 	return false;
 }
 EXPORT_SYMBOL(inode_owner_or_capable);
+
+void inode_nohighmem(struct inode *inode)
+{
+	mapping_set_gfp_mask(inode->i_mapping, GFP_USER);
+}
+EXPORT_SYMBOL(inode_nohighmem);
