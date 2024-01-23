@@ -55,7 +55,7 @@ struct unix_sock {
 	struct sock		*peer;
 	struct sock		*other;
 	struct list_head	link;
-	atomic_long_t		inflight;
+	unsigned long		inflight;
 	spinlock_t		lock;
 	unsigned char		recursion_level;
 	unsigned long		gc_flags;
