@@ -2769,6 +2769,7 @@ static int __devinit igbvf_probe(struct pci_dev *pdev,
 	return 0;
 
 err_hw_init:
+	netif_napi_del(&adapter->rx_ring->napi);
 	kfree(adapter->tx_ring);
 	kfree(adapter->rx_ring);
 err_sw_init:

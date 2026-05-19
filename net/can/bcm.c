@@ -365,6 +365,7 @@ static void bcm_tx_timeout_tsklet(unsigned long data)
 		if (!op->count && (op->flags & TX_COUNTEVT)) {
 
 			/* create notification to user */
+			memset(&msg_head, 0, sizeof(msg_head));
 			msg_head.opcode  = TX_EXPIRED;
 			msg_head.flags   = op->flags;
 			msg_head.count   = op->count;
@@ -412,6 +413,7 @@ static void bcm_rx_changed(struct bcm_op *op, struct can_frame *data)
 	/* this element is not throttled anymore */
 	data->can_dlc &= (BCM_CAN_DLC_MASK|RX_RECV);
 
+	memset(&head, 0, sizeof(head));
 	head.opcode  = RX_CHANGED;
 	head.flags   = op->flags;
 	head.count   = op->count;
@@ -523,6 +525,7 @@ static void bcm_rx_timeout_tsklet(unsigned long data)
 	struct bcm_msg_head msg_head;
 
 	/* create notification to user */
+	memset(&msg_head, 0, sizeof(msg_head));
 	msg_head.opcode  = RX_TIMEOUT;
 	msg_head.flags   = op->flags;
 	msg_head.count   = op->count;
@@ -770,6 +773,7 @@ static int bcm_delete_rx_op(struct list_head *ops, canid_t can_id, int ifindex)
 						  bcm_rx_handler, op);
 
 			list_del(&op->list);
+			synchronize_rcu();
 			bcm_remove_op(op);
 			return 1; /* done */
 		}
@@ -1438,6 +1442,10 @@ static int bcm_release(struct socket *sock)
 
 	lock_sock(sk);
 
+	/* remove procfs entry */
+	if (proc_dir && bo->bcm_proc_read)
+		remove_proc_entry(bo->procname, proc_dir);
+
 	list_for_each_entry_safe(op, next, &bo->tx_ops, list)
 		bcm_remove_op(op);
 
@@ -1466,12 +1474,12 @@ static int bcm_release(struct socket *sock)
 					  REGMASK(op->can_id),
 					  bcm_rx_handler, op);
 
-		bcm_remove_op(op);
 	}
 
-	/* remove procfs entry */
-	if (proc_dir && bo->bcm_proc_read)
-		remove_proc_entry(bo->procname, proc_dir);
+	synchronize_rcu();
+
+	list_for_each_entry_safe(op, next, &bo->rx_ops, list)
+		bcm_remove_op(op);
 
 	/* remove device reference */
 	if (bo->bound) {

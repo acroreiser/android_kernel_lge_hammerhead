@@ -2622,7 +2622,7 @@ static int slub_min_objects;
  * Merge control. If this is set then no merging of slab caches will occur.
  * (Could be removed. This was introduced to pacify the merge skeptics.)
  */
-static int slub_nomerge;
+static int slub_nomerge = 1;
 
 /*
  * Calculate the order of allocation given an slab object size.
@@ -3401,7 +3401,7 @@ size_t ksize(const void *object)
 	page = virt_to_head_page(object);
 
 	if (unlikely(!PageSlab(page))) {
-		WARN_ON(!PageCompound(page));
+		BUG_ON(!PageCompound(page));
 		return PAGE_SIZE << compound_order(page);
 	}
 

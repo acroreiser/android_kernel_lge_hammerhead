@@ -252,14 +252,14 @@ static void wdm_int_callback(struct urb *urb)
 			dev_err(&desc->intf->dev, "Stall on int endpoint\n");
 			goto sw; /* halt is cleared in work */
 		default:
-			dev_err(&desc->intf->dev,
+			dev_err_ratelimited(&desc->intf->dev,
 				"nonzero urb status received: %d\n", status);
 			break;
 		}
 	}
 
 	if (urb->actual_length < sizeof(struct usb_cdc_notification)) {
-		dev_err(&desc->intf->dev, "wdm_int_callback - %d bytes\n",
+		dev_err_ratelimited(&desc->intf->dev, "wdm_int_callback - %d bytes\n",
 			urb->actual_length);
 		goto exit;
 	}
@@ -843,7 +843,12 @@ static int wdm_probe(struct usb_interface *intf, const struct usb_device_id *id)
 
 	if (!buffer)
 		goto err;
-	while (buflen > 2) {
+	while (buflen > 0) {
+	        if ((buflen < buffer[0]) || (buffer[0] < 3)) {
+	                dev_err(&intf->dev, "invalid descriptor buffer length\n");
+	                goto err;
+	        }
+
 		if (buffer[1] != USB_DT_CS_INTERFACE) {
 			dev_err(&intf->dev, "skipping garbage\n");
 			goto next_desc;

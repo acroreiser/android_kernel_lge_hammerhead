@@ -56,7 +56,7 @@ check:
 		    lb, s->period_size);
 }
 
-static void init_pipe_urbs(struct usb_stream_kernel *sk, unsigned use_packsize,
+static int init_pipe_urbs(struct usb_stream_kernel *sk, unsigned use_packsize,
 			   struct urb **urbs, char *transfer,
 			   struct usb_device *dev, int pipe)
 {
@@ -78,6 +78,8 @@ static void init_pipe_urbs(struct usb_stream_kernel *sk, unsigned use_packsize,
 		urb->interval = 1;
 		if (usb_pipeout(pipe))
 			continue;
+		if (usb_urb_ep_type_check(urb))
+			return -EINVAL;
 
 		urb->transfer_buffer_length = transfer_length;
 		desc = urb->iso_frame_desc;
@@ -88,9 +90,11 @@ static void init_pipe_urbs(struct usb_stream_kernel *sk, unsigned use_packsize,
 			desc[p].length = maxpacket;
 		}
 	}
+
+	return 0;
 }
 
-static void init_urbs(struct usb_stream_kernel *sk, unsigned use_packsize,
+static int init_urbs(struct usb_stream_kernel *sk, unsigned use_packsize,
 		      struct usb_device *dev, int in_pipe, int out_pipe)
 {
 	struct usb_stream	*s = sk->s;
@@ -104,9 +108,12 @@ static void init_urbs(struct usb_stream_kernel *sk, unsigned use_packsize,
 		sk->outurb[u] = usb_alloc_urb(sk->n_o_ps, GFP_KERNEL);
 	}
 
-	init_pipe_urbs(sk, use_packsize, sk->inurb, indata, dev, in_pipe);
-	init_pipe_urbs(sk, use_packsize, sk->outurb, sk->write_page, dev,
-		       out_pipe);
+	if (init_pipe_urbs(sk, use_packsize, sk->inurb, indata, dev, in_pipe) ||
+	    init_pipe_urbs(sk, use_packsize, sk->outurb, sk->write_page, dev,
+			   out_pipe))
+		return -EINVAL;
+
+	return 0;
 }
 
 
@@ -192,7 +199,8 @@ struct usb_stream *usb_stream_new(struct usb_stream_kernel *sk,
 	}
 
 	pg = get_order(read_size);
-	sk->s = (void *) __get_free_pages(GFP_KERNEL|__GFP_COMP|__GFP_ZERO, pg);
+	sk->s = (void *) __get_free_pages(GFP_KERNEL|__GFP_COMP|__GFP_ZERO|
+					  __GFP_NOWARN, pg);
 	if (!sk->s) {
 		snd_printk(KERN_WARNING "couldn't __get_free_pages()\n");
 		goto out;
@@ -212,7 +220,8 @@ struct usb_stream *usb_stream_new(struct usb_stream_kernel *sk,
 	pg = get_order(write_size);
 
 	sk->write_page =
-		(void *)__get_free_pages(GFP_KERNEL|__GFP_COMP|__GFP_ZERO, pg);
+		(void *)__get_free_pages(GFP_KERNEL|__GFP_COMP|__GFP_ZERO|
+					 __GFP_NOWARN, pg);
 	if (!sk->write_page) {
 		snd_printk(KERN_WARNING "couldn't __get_free_pages()\n");
 		usb_stream_free(sk);
@@ -225,7 +234,11 @@ struct usb_stream *usb_stream_new(struct usb_stream_kernel *sk,
 	else
 		sk->freqn = get_usb_high_speed_rate(sample_rate);
 
-	init_urbs(sk, use_packsize, dev, in_pipe, out_pipe);
+	if (init_urbs(sk, use_packsize, dev, in_pipe, out_pipe) < 0) {
+		usb_stream_free(sk);
+		return NULL;
+	}
+
 	sk->s->state = usb_stream_stopped;
 out:
 	return sk->s;

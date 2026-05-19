@@ -163,6 +163,9 @@ sctp_chunk_length_valid(struct sctp_chunk *chunk,
 {
 	__u16 chunk_length = ntohs(chunk->chunk_hdr->length);
 
+	/* Previously already marked? */
+	if (unlikely(chunk->pdiscard))
+		return 0;
 	if (unlikely(chunk_length < required_length))
 		return 0;
 
@@ -3349,6 +3352,12 @@ sctp_disposition_t sctp_sf_ootb(const struct sctp_endpoint *ep,
 		/* Report violation if the chunk is less then minimal */
 		if (ntohs(ch->length) < sizeof(sctp_chunkhdr_t))
 			return sctp_sf_violation_chunklen(ep, asoc, type, arg,
+						  commands);
+
+		/* Report violation if chunk len overflows */
+		ch_end = ((__u8 *)ch) + SCTP_PAD4(ntohs(ch->length));
+		if (ch_end > skb_tail_pointer(skb))
+			return sctp_sf_violation_chunklen(net, ep, asoc, type, arg,
 						  commands);
 
 		/* Now that we know we at least have a chunk header,
