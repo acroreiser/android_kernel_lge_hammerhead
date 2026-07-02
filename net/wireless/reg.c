@@ -1683,6 +1683,8 @@ int regulatory_hint(struct wiphy *wiphy, const char *alpha2)
 {
 	struct regulatory_request *request;
 
+	return 0;
+
 	BUG_ON(!alpha2);
 	BUG_ON(!wiphy);
 
