@@ -223,7 +223,7 @@ out:
 	return NULL;
 }
 
-static void __free(void *vaddr, bool unmap)
+static void ___free(void *vaddr, bool unmap)
 {
 	struct alloc *node = find_alloc((unsigned long)vaddr);
 
@@ -364,7 +364,7 @@ void free_contiguous_memory(void *addr)
 {
 	if (!addr)
 		return;
-	__free(addr, true);
+	___free(addr, true);
 	return;
 }
 EXPORT_SYMBOL_GPL(free_contiguous_memory);
@@ -373,7 +373,7 @@ void free_contiguous_memory_by_paddr(phys_addr_t paddr)
 {
 	if (!paddr)
 		return;
-	__free((void *)(unsigned long)paddr, false);
+	___free((void *)(unsigned long)paddr, false);
 	return;
 }
 EXPORT_SYMBOL_GPL(free_contiguous_memory_by_paddr);
