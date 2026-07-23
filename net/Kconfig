@@ -268,6 +268,12 @@ config BQL
 config HAVE_BPF_JIT
 	bool
 
+config HAVE_CBPF_JIT
+	bool
+
+config HAVE_EBPF_JIT
+	bool
+
 config BPF_JIT
 	bool "enable BPF Just In Time compiler"
 	depends on HAVE_BPF_JIT
