@@ -18,6 +18,7 @@
 #include <linux/string.h>
 #include <linux/slab.h>
 #include <linux/if_vlan.h>
+#include <linux/math64.h>
 
 #include <asm/cacheflush.h>
 #include <asm/hwcap.h>
@@ -132,6 +133,22 @@ static u32 jit_udiv32(u32 dividend, u32 divisor)
 static u32 jit_mod32(u32 dividend, u32 divisor)
 {
 	return dividend % divisor;
+}
+
+static u64 jit_udiv64(u64 dividend, u64 divisor)
+{
+	if (unlikely(!divisor))
+		return 0;
+	return div64_u64(dividend, divisor);
+}
+
+static u64 jit_umod64(u64 dividend, u64 divisor)
+{
+	u64 quot;
+	if (unlikely(!divisor))
+		return 0;
+	quot = div64_u64(dividend, divisor);
+	return dividend - quot * divisor;
 }
 
 static inline void _emit(int cond, u32 inst, struct jit_ctx *ctx)
@@ -1164,6 +1181,58 @@ static void build_epilogue(struct jit_ctx *ctx)
 #endif
 }
 
+static inline void emit_udivmod64(const u8 dst[], const u8 src[], bool dstk,
+				  bool sstk, struct jit_ctx *ctx, u8 op,
+				  bool is_imm, u32 imm)
+{
+	const u8 *tmp = bpf2a32[TMP_REG_1];  /* {ARM_R7, ARM_R6} */
+	const u8 *tmp2 = bpf2a32[TMP_REG_2]; /* {ARM_R10, ARM_R8} */
+
+	ctx->seen |= SEEN_CALL;
+
+	/* 1. Loading divisor into temp regs R8 (lo), R10 (hi) */
+	if (is_imm) {
+		emit_a32_mov_i64(true, tmp2, imm, false, ctx);
+	} else if (sstk) {
+		emit(ARM_LDR_I(tmp2[1], ARM_SP, STACK_VAR(src_lo)), ctx);
+		emit(ARM_LDR_I(tmp2[0], ARM_SP, STACK_VAR(src_hi)), ctx);
+	} else {
+		emit(ARM_MOV_R(tmp2[1], src_lo), ctx);
+		emit(ARM_MOV_R(tmp2[0], src_hi), ctx);
+	}
+
+	/* 2. Loading dividend into regs R6 (lo), R7 (hi) */
+	if (dstk) {
+		emit(ARM_LDR_I(tmp[1], ARM_SP, STACK_VAR(dst_lo)), ctx);
+		emit(ARM_LDR_I(tmp[0], ARM_SP, STACK_VAR(dst_hi)), ctx);
+	} else {
+		emit(ARM_MOV_R(tmp[1], dst_lo), ctx);
+		emit(ARM_MOV_R(tmp[0], dst_hi), ctx);
+	}
+
+	/* 3. Passing arguments:
+	 * R0: dividend_lo, R1: dividend_hi
+	 * R2: divisor_lo,  R3: divisor_hi
+	 */
+	emit(ARM_MOV_R(ARM_R0, tmp[1]), ctx);
+	emit(ARM_MOV_R(ARM_R1, tmp[0]), ctx);
+	emit(ARM_MOV_R(ARM_R2, tmp2[1]), ctx);
+	emit(ARM_MOV_R(ARM_R3, tmp2[0]), ctx);
+
+	/* 4. Calling jit_udiv64 or jit_umod64 */
+	emit_mov_i(ARM_IP, op == BPF_DIV ? (u32)jit_udiv64 : (u32)jit_umod64, ctx);
+	emit_blx_r(ARM_IP, ctx);
+
+	/* 5. Saving result from R0 (lo), R1 (hi) back into dst */
+	if (dstk) {
+		emit(ARM_STR_I(ARM_R0, ARM_SP, STACK_VAR(dst_lo)), ctx);
+		emit(ARM_STR_I(ARM_R1, ARM_SP, STACK_VAR(dst_hi)), ctx);
+	} else {
+		emit(ARM_MOV_R(dst_lo, ARM_R0), ctx);
+		emit(ARM_MOV_R(dst_hi, ARM_R1), ctx);
+	}
+}
+
 /*
  * Convert an eBPF instruction to native instruction, i.e
  * JITs an eBPF instruction.
@@ -1299,7 +1368,9 @@ static int build_insn(const struct bpf_insn *insn, struct jit_ctx *ctx)
 	case BPF_ALU64 | BPF_DIV | BPF_X:
 	case BPF_ALU64 | BPF_MOD | BPF_K:
 	case BPF_ALU64 | BPF_MOD | BPF_X:
-		goto notyet;
+		emit_udivmod64(dst, src, dstk, sstk, ctx, BPF_OP(code),
+			       BPF_SRC(code) == BPF_K, imm);
+		break;
 	/* dst = dst >> imm */
 	/* dst = dst << imm */
 	case BPF_ALU | BPF_RSH | BPF_K:
