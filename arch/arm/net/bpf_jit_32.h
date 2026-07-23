@@ -139,6 +139,13 @@
 
 #define ARM_INST_UXTH		0x06ff0070
 
+#define ARM_INST_LDREX		0x01900f9f
+#define ARM_INST_STREX		0x01800f90
+#define ARM_INST_LDREXD		0x01b00f9f
+#define ARM_INST_STREXD		0x01a00f90
+
+#define ARM_INST_DMB_ISH	0xf57ff05b
+
 /*
  * Use a suitable undefined instruction to use for ARM/Thumb2 faulting.
  * We need to be careful not to conflict with those used by other modules
@@ -272,5 +279,11 @@
 #define ARM_MLS(rd, rn, rm, ra)	(ARM_INST_MLS | (rd) << 16 | (rn) | (rm) << 8 \
 				 | (ra) << 12)
 #define ARM_UXTH(rd, rm)	(ARM_INST_UXTH | (rd) << 12 | (rm))
+
+#define ARM_LDREX(rt, rn)	(ARM_INST_LDREX | (rt) << 12 | (rn) << 16)
+#define ARM_STREX(rd, rt, rn)	(ARM_INST_STREX | (rd) << 12 | (rn) << 16 | (rt))
+#define ARM_LDREXD(rt, rn)	(ARM_INST_LDREXD | (rt) << 12 | (rn) << 16)
+#define ARM_STREXD(rd, rt, rn)	(ARM_INST_STREXD | (rd) << 12 | (rn) << 16 | (rt))
+#define ARM_DMB_ISH()	(ARM_INST_DMB_ISH)
 
 #endif /* PFILTER_OPCODES_ARM_H */
