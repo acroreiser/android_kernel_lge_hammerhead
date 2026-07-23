@@ -1632,7 +1632,74 @@ exit:
 	case BPF_STX | BPF_XADD | BPF_W:
 	/* STX XADD: lock *(u64 *)(dst + off) += src */
 	case BPF_STX | BPF_XADD | BPF_DW:
-		goto notyet;
+	{
+		u8 sz = BPF_SIZE(code);
+		u8 rn, s_lo, s_hi;
+		int loop_off;
+
+		/* 1. Calculate the target address into ARM_IP (R12) */
+		if (dstk)
+			emit(ARM_LDR_I(ARM_IP, ARM_SP, STACK_VAR(dst_lo)), ctx);
+		else
+			emit(ARM_MOV_R(ARM_IP, dst_lo), ctx);
+
+		if (off) {
+			emit_a32_mov_i(tmp[0], off, false, ctx);
+			emit(ARM_ADD_R(ARM_IP, ARM_IP, tmp[0]), ctx);
+		}
+		rn = ARM_IP;
+
+		/* 2. Load the value to be added (src) if it is on the stack */
+		s_lo = sstk ? tmp2[1] : src_lo;
+		s_hi = sstk ? tmp2[0] : src_hi;
+		if (sstk) {
+			emit(ARM_LDR_I(s_lo, ARM_SP, STACK_VAR(src_lo)), ctx);
+			if (sz == BPF_DW)
+				emit(ARM_LDR_I(s_hi, ARM_SP, STACK_VAR(src_hi)), ctx);
+		}
+
+		if (sz == BPF_W) {
+			/* 32-bit atomic XADD:
+			 * loop:
+			 *   LDREX  tmp2[0], [ARM_IP]       ; Exclusive reading
+			 *   ADD    tmp2[0], tmp2[0], s_lo  ; Addition
+			 *   STREX  tmp[0], tmp2[0], [ARM_IP]; Exclusive writing (status in tmp[0])
+			 *   CMP    tmp[0], #0              ; Success? (0 = success)
+			 *   BNE    loop                    ; Retry if not
+			 */
+			emit(ARM_DMB_ISH(), ctx); /* Barrier before operation */
+			loop_off = ctx->idx;
+			emit(ARM_LDREX(tmp2[0], rn), ctx);
+			emit(ARM_ADD_R(tmp2[0], tmp2[0], s_lo), ctx);
+			emit(ARM_STREX(tmp[0], tmp2[0], rn), ctx);
+			emit(ARM_CMP_I(tmp[0], 0), ctx);
+			jmp_offset = loop_off - ctx->idx - 2;
+			_emit(ARM_COND_NE, ARM_B(jmp_offset), ctx);
+			emit(ARM_DMB_ISH(), ctx); /* Barrier after operation */
+		} else {
+			/* 64-bit atomic XADD:
+			 * Using an even-odd pair of regs tmp[1] (R6) and tmp[0] (R7)
+			 * loop:
+			 *   LDREXD R6, [ARM_IP]             ; Exclusive 64-бит load into R6:R7
+			 *   ADDS   R6, R6, s_lo             ; Addition of the low-order part + carry flag
+			 *   ADC    R7, R7, s_hi             ; Addition of the high-order part with carry
+			 *   STREXD ARM_LR, R6, [ARM_IP]     ; Exclusive 64-bit write (status in LR)
+			 *   CMP    ARM_LR, #0               ; Success? (0 = success)
+			 *   BNE    loop                     ; Retry if not
+			 */
+			emit(ARM_DMB_ISH(), ctx); /* Barrier before operation */
+			loop_off = ctx->idx;
+			emit(ARM_LDREXD(tmp[1], rn), ctx);
+			emit(ARM_ADDS_R(tmp[1], tmp[1], s_lo), ctx);
+			emit(ARM_ADC_R(tmp[0], tmp[0], s_hi), ctx);
+			emit(ARM_STREXD(ARM_LR, tmp[1], rn), ctx);
+			emit(ARM_CMP_I(ARM_LR, 0), ctx);
+			jmp_offset = loop_off - ctx->idx - 2;
+			_emit(ARM_COND_NE, ARM_B(jmp_offset), ctx);
+			emit(ARM_DMB_ISH(), ctx); /* Barrier after operation */
+		}
+		break;
+	}
 	/* STX: *(size *)(dst + off) = src */
 	case BPF_STX | BPF_MEM | BPF_W:
 	case BPF_STX | BPF_MEM | BPF_H:
