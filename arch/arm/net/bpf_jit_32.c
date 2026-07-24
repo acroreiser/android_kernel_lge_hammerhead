@@ -1210,6 +1210,21 @@ static inline void emit_udivmod64(const u8 dst[], const u8 src[], bool dstk,
 		emit(ARM_MOV_R(tmp[0], dst_hi), ctx);
 	}
 
+	/* 2.5. R0-R3 are the fixed physical homes of BPF_REG_0 and
+	 * BPF_REG_1 (see bpf2a32[]). Unlike a real BPF_CALL, the eBPF
+	 * verifier does NOT assume this ALU64 DIV/MOD instruction may
+	 * clobber r0/r1 - it only tracks dst as written. Since we smuggle
+	 * a C helper call through R0-R3 to do the actual division, we
+	 * must save whatever those registers currently hold and restore
+	 * them after the call, or any live r0/r1 value gets destroyed
+	 * (e.g. a pointer used by a later instruction). We restore them
+	 * BEFORE writing the result into dst, so if dst itself happens to
+	 * be r0 or r1 the restored (stale) value is correctly overwritten
+	 * by the real result right after.
+	 */
+	emit(ARM_PUSH(1 << ARM_R0 | 1 << ARM_R1 | 1 << ARM_R2 | 1 << ARM_R3),
+	     ctx);
+
 	/* 3. Passing arguments:
 	 * R0: dividend_lo, R1: dividend_hi
 	 * R2: divisor_lo,  R3: divisor_hi
@@ -1223,13 +1238,27 @@ static inline void emit_udivmod64(const u8 dst[], const u8 src[], bool dstk,
 	emit_mov_i(ARM_IP, op == BPF_DIV ? (u32)jit_udiv64 : (u32)jit_umod64, ctx);
 	emit_blx_r(ARM_IP, ctx);
 
-	/* 5. Saving result from R0 (lo), R1 (hi) back into dst */
+	/* 4.5. Stash the result in tmp2 (already free - divisor was
+	 * consumed by the call) before R0/R1 get overwritten by the
+	 * restore below.
+	 */
+	emit(ARM_MOV_R(tmp2[1], ARM_R0), ctx);
+	emit(ARM_MOV_R(tmp2[0], ARM_R1), ctx);
+
+	/* 4.6. Restore whatever r0/r1 (and r2/r3) held before this
+	 * instruction - they may be live BPF_REG_0/BPF_REG_1 values
+	 * unrelated to this DIV/MOD.
+	 */
+	emit(ARM_POP(1 << ARM_R0 | 1 << ARM_R1 | 1 << ARM_R2 | 1 << ARM_R3),
+	     ctx);
+
+	/* 5. Saving result (now safely in tmp2) back into dst */
 	if (dstk) {
-		emit(ARM_STR_I(ARM_R0, ARM_SP, STACK_VAR(dst_lo)), ctx);
-		emit(ARM_STR_I(ARM_R1, ARM_SP, STACK_VAR(dst_hi)), ctx);
+		emit(ARM_STR_I(tmp2[1], ARM_SP, STACK_VAR(dst_lo)), ctx);
+		emit(ARM_STR_I(tmp2[0], ARM_SP, STACK_VAR(dst_hi)), ctx);
 	} else {
-		emit(ARM_MOV_R(dst_lo, ARM_R0), ctx);
-		emit(ARM_MOV_R(dst_hi, ARM_R1), ctx);
+		emit(ARM_MOV_R(dst_lo, tmp2[1]), ctx);
+		emit(ARM_MOV_R(dst_hi, tmp2[0]), ctx);
 	}
 }
 
