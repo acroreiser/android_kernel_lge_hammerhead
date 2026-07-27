@@ -1153,6 +1153,9 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 		enqueue_pushable_task(rq, p);
 
 	inc_nr_running(rq);
+
+	if (per_cpu(rt_util, rq->cpu).func)
+		per_cpu(rt_util, rq->cpu).func(rq->cpu, true, p);
 }
 
 static void dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
@@ -1165,6 +1168,9 @@ static void dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 	dequeue_pushable_task(rq, p);
 
 	dec_nr_running(rq);
+
+	if (per_cpu(rt_util, rq->cpu).func)
+		per_cpu(rt_util, rq->cpu).func(rq->cpu, false, p);
 }
 
 /*
