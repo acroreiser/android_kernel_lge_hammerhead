@@ -343,7 +343,7 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 				/* give the system time to free up the memory */
 				msleep_interruptible(20);
 				mutex_unlock(&scan_mutex);
-				return 0;
+				return rem;
 			}
 		}
 
