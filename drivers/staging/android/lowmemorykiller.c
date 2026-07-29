@@ -419,6 +419,11 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 
 		lowmem_deathpending_timeout = jiffies + HZ;
 		set_tsk_thread_flag(selected, TIF_MEMDIE);
+		{
+			struct sched_param param = { .sched_priority = 1 };
+			sched_setscheduler_nocheck(selected,
+				SCHED_RR | SCHED_RESET_ON_FORK, &param);
+		}
 		send_sig(SIGKILL, selected, 0);
 		rem -= selected_tasksize;
 		rcu_read_unlock();
