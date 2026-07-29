@@ -141,9 +141,8 @@ void tune_lmk_zone_param(struct zonelist *zonelist, int classzone_idx,
 							       NR_FREE_PAGES);
 			if (other_file != NULL)
 				*other_file -= zone_page_state(zone,
-							       NR_FILE_PAGES)
-					- zone_page_state(zone, NR_SHMEM)
-					- zone_page_state(zone, NR_SWAPCACHE);
+							       NR_ACTIVE_FILE)
+					+ zone_page_state(zone, NR_INACTIVE_FILE);
 		} else if (zone_idx < classzone_idx) {
 			if (zone_watermark_ok(zone, 0, 0, classzone_idx, 0) &&
 			    other_free) {
@@ -291,14 +290,8 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 
 	other_free = global_page_state(NR_FREE_PAGES);
 
-	if (global_page_state(NR_SHMEM) + total_swapcache_pages <
-		global_page_state(NR_FILE_PAGES))
-		other_file = global_page_state(NR_FILE_PAGES) -
-						global_page_state(NR_SHMEM) -
-						global_page_state(NR_UNEVICTABLE) -
-						total_swapcache_pages;
-	else
-		other_file = 0;
+	other_file = global_page_state(NR_ACTIVE_FILE) +
+		     global_page_state(NR_INACTIVE_FILE);
 
 	tune_lmk_param(&other_free, &other_file, sc);
 
