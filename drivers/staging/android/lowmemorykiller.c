@@ -68,6 +68,7 @@ static int lowmem_minfree[6] = {
 static int lowmem_minfree_size = 4;
 
 static unsigned long lowmem_deathpending_timeout;
+static unsigned long lowmem_kill_timeout_ms = 100; // matches lmkd
 
 #define lowmem_print(level, x...)			\
 	do {						\
@@ -283,6 +284,9 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	if (is_secondary_kswapd())
 		return 0;
 
+	if (time_before_eq(jiffies, lowmem_deathpending_timeout))
+		return 0;
+
 	if (nr_to_scan > 0) {
 		if (mutex_lock_interruptible(&scan_mutex) < 0)
 			return 0;
@@ -417,7 +421,7 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 			show_mem_call_notifiers();
 		}
 
-		lowmem_deathpending_timeout = jiffies + (HZ / 10);
+		lowmem_deathpending_timeout = jiffies + msecs_to_jiffies(lowmem_kill_timeout_ms);
 		set_tsk_thread_flag(selected, TIF_MEMDIE);
 		{
 			struct sched_param param = { .sched_priority = 1 };
@@ -544,6 +548,7 @@ module_param_array_named(adj, lowmem_adj, int, &lowmem_adj_size,
 #endif
 module_param_array_named(minfree, lowmem_minfree, uint, &lowmem_minfree_size,
 			 S_IRUGO | S_IWUSR);
+module_param_named(kill_timeout_ms, lowmem_kill_timeout_ms, uint, S_IRUGO | S_IWUSR);
 module_param_named(debug_level, lowmem_debug_level, uint, S_IRUGO | S_IWUSR);
 
 module_init(lowmem_init);
