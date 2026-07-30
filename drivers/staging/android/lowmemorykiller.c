@@ -417,7 +417,7 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 			show_mem_call_notifiers();
 		}
 
-		lowmem_deathpending_timeout = jiffies + HZ;
+		lowmem_deathpending_timeout = jiffies + (HZ / 10);
 		set_tsk_thread_flag(selected, TIF_MEMDIE);
 		{
 			struct sched_param param = { .sched_priority = 1 };
