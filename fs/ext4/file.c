@@ -333,7 +333,6 @@ static const struct vm_operations_struct ext4_file_vm_ops = {
 	.map_pages	= filemap_map_pages,
 #endif
 	.page_mkwrite   = ext4_page_mkwrite,
-	.remap_pages	= generic_file_remap_pages,
 };
 
 static int ext4_file_mmap(struct file *file, struct vm_area_struct *vma)
@@ -349,6 +348,7 @@ static int ext4_file_mmap(struct file *file, struct vm_area_struct *vma)
 	}
 	file_accessed(file);
 	vma->vm_ops = &ext4_file_vm_ops;
+	vma->vm_flags |= VM_CAN_NONLINEAR;
 	return 0;
 }
 
@@ -757,7 +757,7 @@ loff_t ext4_llseek(struct file *file, loff_t offset, int whence)
 	case SEEK_CUR:
 	case SEEK_END:
 		return generic_file_llseek_size(file, offset, whence,
-						maxbytes, i_size_read(inode));
+						i_size_read(inode));
 	case SEEK_DATA:
 		return ext4_seek_data(file, offset, maxbytes);
 	case SEEK_HOLE:

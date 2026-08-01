@@ -41,6 +41,11 @@
  * The fourth extended filesystem constants/structures
  */
 
+#define bio_for_each_segment_all(bvl, bio, i)				\
+	for (i = 0;							\
+	     bvl = bio_iovec_idx((bio), (i)), i < (bio)->bi_vcnt;	\
+	     i++)
+
 /*
  * Define EXT4FS_DEBUG to produce debug messages
  */

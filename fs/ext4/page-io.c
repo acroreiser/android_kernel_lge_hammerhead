@@ -32,6 +32,8 @@
 #include "xattr.h"
 #include "acl.h"
 
+#include "ext4.h"
+
 static struct kmem_cache *io_end_cachep;
 
 int __init ext4_init_pageio(void)

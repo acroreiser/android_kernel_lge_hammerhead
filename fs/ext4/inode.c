@@ -232,11 +232,6 @@ void ext4_evict_inode(struct inode *inode)
 
 	WARN_ON(atomic_read(&EXT4_I(inode)->i_ioend_count));
 
-	/*
-	 * Protect us against freezing - iput() caller didn't have to have any
-	 * protection against it
-	 */
-	sb_start_intwrite(inode->i_sb);
 	handle = ext4_journal_start(inode, EXT4_HT_TRUNCATE,
 				    ext4_blocks_for_truncate(inode)+3);
 	if (IS_ERR(handle)) {
@@ -247,7 +242,6 @@ void ext4_evict_inode(struct inode *inode)
 		 * cleaned up.
 		 */
 		ext4_orphan_del(NULL, inode);
-		sb_end_intwrite(inode->i_sb);
 		goto no_delete;
 	}
 
@@ -279,7 +273,6 @@ void ext4_evict_inode(struct inode *inode)
 		stop_handle:
 			ext4_journal_stop(handle);
 			ext4_orphan_del(NULL, inode);
-			sb_end_intwrite(inode->i_sb);
 			goto no_delete;
 		}
 	}
@@ -308,7 +301,6 @@ void ext4_evict_inode(struct inode *inode)
 	else
 		ext4_free_inode(handle, inode);
 	ext4_journal_stop(handle);
-	sb_end_intwrite(inode->i_sb);
 	return;
 no_delete:
 	ext4_clear_inode(inode);	/* We must guarantee clearing of inode... */
@@ -1042,7 +1034,7 @@ retry_journal:
 		goto retry_grab;
 	}
 	/* In case writeback began while the page was unlocked */
-	wait_for_stable_page(page);
+	wait_on_page_writeback(page);
 
 #ifdef CONFIG_EXT4_FS_ENCRYPTION
 	if (ext4_should_dioread_nolock(inode))
@@ -2583,8 +2575,12 @@ static int ext4_nonda_switch(struct super_block *sb)
 	/*
 	 * Start pushing delalloc when 1/2 of free blocks are dirty.
 	 */
-	if (dirty_clusters && (free_clusters < 2 * dirty_clusters))
-		try_to_writeback_inodes_sb(sb, WB_REASON_FS_FREE_SPACE);
+	if (dirty_clusters && (free_clusters < 2 * dirty_clusters) &&
+	    !writeback_in_progress(sb->s_bdi) &&
+	    down_read_trylock(&sb->s_umount)) {
+		writeback_inodes_sb(sb, WB_REASON_FS_FREE_SPACE);
+		up_read(&sb->s_umount);
+	}
 
 	if (2 * free_clusters < 3 * dirty_clusters ||
 	    free_clusters < (dirty_clusters + EXT4_FREECLUSTERS_WATERMARK)) {
@@ -2677,7 +2673,7 @@ retry_journal:
 		goto retry_grab;
 	}
 	/* In case writeback began while the page was unlocked */
-	wait_for_stable_page(page);
+	wait_on_page_writeback(page);
 
 #ifdef CONFIG_EXT4_FS_ENCRYPTION
 	ret = ext4_block_write_begin(page, pos, len,
@@ -3959,8 +3955,8 @@ void ext4_set_inode_flags(struct inode *inode)
 		new_fl |= S_NOATIME;
 	if (flags & EXT4_DIRSYNC_FL)
 		new_fl |= S_DIRSYNC;
-	inode_set_flags(inode, new_fl,
-			S_SYNC|S_APPEND|S_IMMUTABLE|S_NOATIME|S_DIRSYNC);
+	set_mask_bits(&inode->i_flags,
+		      S_SYNC|S_APPEND|S_IMMUTABLE|S_NOATIME|S_DIRSYNC, new_fl);
 }
 
 /* Propagate flags from i_flags to EXT4_I(inode)->i_flags */
@@ -5147,7 +5143,11 @@ int ext4_page_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf)
 	get_block_t *get_block;
 	int retries = 0;
 
-	sb_start_pagefault(inode->i_sb);
+	/*
+	 * This check is racy but catches the common case. We rely on
+	 * __block_page_mkwrite() to do a reliable check.
+	 */
+	vfs_check_frozen(inode->i_sb, SB_FREEZE_WRITE);
 	file_update_time(vma->vm_file);
 	/* Delalloc case is easy... */
 	if (test_opt(inode->i_sb, DELALLOC) &&
@@ -5183,7 +5183,7 @@ int ext4_page_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf)
 					    0, len, NULL,
 					    ext4_bh_unmapped)) {
 			/* Wait so that we don't change page under IO */
-			wait_for_stable_page(page);
+			wait_on_page_writeback(page);
 			ret = VM_FAULT_LOCKED;
 			goto out;
 		}
@@ -5218,6 +5218,5 @@ retry_alloc:
 out_ret:
 	ret = block_page_mkwrite_return(ret);
 out:
-	sb_end_pagefault(inode->i_sb);
 	return ret;
 }

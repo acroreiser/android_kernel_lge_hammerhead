@@ -1186,7 +1186,6 @@ ext4_es_seq_shrinker_info_release(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations ext4_es_seq_shrinker_info_fops = {
-	.owner		= THIS_MODULE,
 	.open		= ext4_es_seq_shrinker_info_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,

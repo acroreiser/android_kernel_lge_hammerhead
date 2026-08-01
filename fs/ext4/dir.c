@@ -362,7 +362,7 @@ static loff_t ext4_dir_llseek(struct file *file, loff_t offset, int whence)
 
 	if (likely(dx_dir))
 		return generic_file_llseek_size(file, offset, whence,
-						    htree_max, htree_max);
+						    htree_max);
 	else
 		return ext4_llseek(file, offset, whence);
 }
