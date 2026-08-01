@@ -341,15 +341,9 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		if (test_task_flag(tsk, TIF_MM_RELEASED))
 			continue;
 
-		if (time_before_eq(jiffies, lowmem_deathpending_timeout)) {
-			if (test_task_flag(tsk, TIF_MEMDIE)) {
-				rcu_read_unlock();
-				/* give the system time to free up the memory */
-				msleep_interruptible(20);
-				mutex_unlock(&scan_mutex);
-				return rem;
-			}
-		}
+		/* if task still dying ignore it */
+		if (test_task_flag(tsk, TIF_MEMDIE))
+			continue;
 
 		p = find_lock_task_mm(tsk);
 		if (!p)
