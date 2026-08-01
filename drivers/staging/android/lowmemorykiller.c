@@ -297,6 +297,11 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 			return rem;
 	}
 
+	if (nr_to_scan > 0 && time_before_eq(jiffies, lowmem_deathpending_timeout)) {
+		mutex_unlock(&scan_mutex);
+		return rem;
+	}
+
 	other_free = global_page_state(NR_FREE_PAGES);
 
 	other_file = global_page_state(NR_ACTIVE_FILE) +
