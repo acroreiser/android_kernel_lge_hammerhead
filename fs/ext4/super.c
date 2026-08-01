@@ -2891,7 +2891,6 @@ static int ext4_run_li_request(struct ext4_li_request *elr)
 	sb = elr->lr_super;
 	ngroups = EXT4_SB(sb)->s_groups_count;
 
-	sb_start_write(sb);
 	for (group = elr->lr_next_group; group < ngroups; group++) {
 		gdp = ext4_get_group_desc(sb, group, NULL);
 		if (!gdp) {
@@ -2918,7 +2917,6 @@ static int ext4_run_li_request(struct ext4_li_request *elr)
 		elr->lr_next_sched = jiffies + elr->lr_timeout;
 		elr->lr_next_group = group + 1;
 	}
-	sb_end_write(sb);
 
 	return ret;
 }
@@ -4723,11 +4721,7 @@ static int ext4_sync_fs(struct super_block *sb, int wait)
 
 	trace_ext4_sync_fs(sb, wait);
 	flush_workqueue(sbi->rsv_conversion_wq);
-	/*
-	 * Writeback quota in non-journalled quota case - journalled quota has
-	 * no dirty dquots
-	 */
-	dquot_writeback_dquots(sb, -1);
+
 	/*
 	 * Data writeback is possible w/o journal transaction, so barrier must
 	 * being sent at the end of the function. But we can skip it if
@@ -5110,7 +5104,7 @@ static int ext4_statfs(struct dentry *dentry, struct kstatfs *buf)
 
 static inline struct inode *dquot_to_inode(struct dquot *dquot)
 {
-	return sb_dqopt(dquot->dq_sb)->files[dquot->dq_id.type];
+	return sb_dqopt(dquot->dq_sb)->files[dquot->dq_type];
 }
 
 static int ext4_write_dquot(struct dquot *dquot)
