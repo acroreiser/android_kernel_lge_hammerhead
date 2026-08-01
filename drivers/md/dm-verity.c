@@ -1037,20 +1037,6 @@ static void bi_complete(struct bio *bio, int error)
         complete((struct completion *)bio->bi_private);
 }
 
-static int submit_bio_wait(int rw, struct bio *bio)
-{
-        struct completion event;
-        rw |= REQ_SYNC;
-
-        init_completion(&event);
-        bio->bi_private = &event;
-        bio->bi_end_io = bi_complete;
-        submit_bio(rw, bio);
-        wait_for_completion(&event);
-
-        return test_bit(BIO_UPTODATE, &bio->bi_flags);
-}
-
 static int read_block_dev(struct bio_read *payload, struct block_device *bdev,
 		sector_t offset, int length)
 {
