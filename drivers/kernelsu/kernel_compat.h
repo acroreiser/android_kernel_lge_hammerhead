@@ -27,11 +27,11 @@ static inline int install_session_keyring(struct key *keyring)
 
 // up to 5.1, struct key __rcu *session_keyring; /* keyring inherited over fork */
 // so we need to grab this using rcu_dereference
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
+//#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
 static inline struct key *ksu_get_current_session_keyring() { return rcu_dereference(current->cred->session_keyring); }
-#else
-static inline struct key *ksu_get_current_session_keyring() { return rcu_dereference(current->cred->tgcred->session_keyring); }
-#endif
+//#else
+//static inline struct key *ksu_get_current_session_keyring() { return rcu_dereference(current->cred->tgcred->session_keyring); }
+//#endif
 
 static noinline void ksu_grab_init_session_keyring()
 {
