@@ -184,7 +184,17 @@ int ext4_init_crypto(void)
 	mutex_lock(&crypto_init);
 	if (ext4_read_workqueue)
 		goto already_initialized;
-	ext4_read_workqueue = alloc_workqueue("ext4_crypto", WQ_HIGHPRI, 0);
+
+	/*
+	 * Use an unbound workqueue to allow bios to be decrypted in parallel
+	 * even when they happen to complete on the same CPU.  This sacrifices
+	 * locality, but it's worthwhile since decryption is CPU-intensive.
+	 *
+	 * Also use a high-priority workqueue to prioritize decryption work,
+	 * which blocks reads from completing, over regular application tasks.
+	 */
+	ext4_read_workqueue = alloc_workqueue("ext4_crypto", WQ_UNBOUND | WQ_HIGHPRI,
+								 num_online_cpus());
 	if (!ext4_read_workqueue)
 		goto fail;
 
