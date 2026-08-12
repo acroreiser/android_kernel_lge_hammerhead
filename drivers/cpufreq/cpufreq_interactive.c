@@ -1173,8 +1173,8 @@ void cpufreq_interactive_rt_boost_hook(int cpu, bool active, struct task_struct 
 		return;
 
 	pcpu_rt->active = active;
-	if (active)
-		cpufreq_interactive_timer_resched(cpu, false, true);
+
+	cpufreq_interactive_timer_resched(cpu, false, true);
 }
 
 static void cpufreq_interactive_set_rt_hook(int cpu,
