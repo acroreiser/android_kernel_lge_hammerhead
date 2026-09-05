@@ -1232,6 +1232,17 @@ struct sched_entity {
 	u64			vruntime;
 	u64			prev_sum_exec_runtime;
 
+#ifdef CONFIG_SCHED_BORE
+	u64				burst_time;
+	u8				prev_burst_penalty;
+	u8				curr_burst_penalty;
+	u8				burst_penalty;
+	u8				burst_score;
+	u8				child_burst;
+	u32				child_burst_cnt;
+	u64				child_burst_last_cached;
+#endif // CONFIG_SCHED_BORE
+
 	u64			nr_migrations;
 
 #ifdef CONFIG_SCHEDSTATS
@@ -2320,6 +2331,7 @@ extern void wake_up_new_task(struct task_struct *tsk);
  static inline void kick_process(struct task_struct *tsk) { }
 #endif
 extern void sched_fork(struct task_struct *p);
+extern void sched_post_fork(struct task_struct *p);
 extern void sched_dead(struct task_struct *p);
 
 extern void proc_caches_init(void);
