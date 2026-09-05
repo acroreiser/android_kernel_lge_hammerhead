@@ -860,6 +860,8 @@ extern void update_group_power(struct sched_domain *sd, int cpu);
 extern void init_sched_rt_class(void);
 extern void init_sched_fair_class(void);
 
+extern void reweight_task(struct task_struct *p, int prio);
+
 extern void resched_task(struct task_struct *p);
 extern void resched_cpu(int cpu);
 
