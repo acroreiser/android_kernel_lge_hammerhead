@@ -208,6 +208,9 @@ int adreno_drawctxt_wait(struct adreno_device *adreno_dev,
 	/* Needs to hold the device mutex */
 	BUG_ON(!mutex_is_locked(&device->mutex));
 
+	if (!timeout || timeout > 1000)
+		timeout = 1000;
+
 	trace_adreno_drawctxt_wait_start(context->id, timestamp);
 
 	ret = kgsl_add_event(device, context->id, timestamp,
@@ -229,21 +232,15 @@ int adreno_drawctxt_wait(struct adreno_device *adreno_dev,
 
 	mutex_unlock(&device->mutex);
 
-	if (timeout) {
-		ret = (int) adreno_wait_event_interruptible_timeout(
-			drawctxt->waiting,
-			_check_context_timestamp(device, drawctxt, timestamp),
-			msecs_to_jiffies(timeout), io);
+	ret = (int) adreno_wait_event_interruptible_timeout(
+		drawctxt->waiting,
+		_check_context_timestamp(device, drawctxt, timestamp),
+		msecs_to_jiffies(timeout), io);
 
-		if (ret == 0)
-			ret = -ETIMEDOUT;
-		else if (ret > 0)
-			ret = 0;
-	} else {
-		ret = (int) adreno_wait_event_interruptible(drawctxt->waiting,
-			_check_context_timestamp(device, drawctxt, timestamp),
-				io);
-	}
+	if (ret == 0)
+		ret = -ETIMEDOUT;
+	else if (ret > 0)
+		ret = 0;
 
 	mutex_lock(&device->mutex);
 
