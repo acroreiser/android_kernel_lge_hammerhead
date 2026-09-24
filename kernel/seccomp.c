@@ -550,6 +550,12 @@ int __secure_computing(int this_syscall)
 #ifdef CONFIG_SECCOMP_FILTER
 	case SECCOMP_MODE_FILTER: {
 		int data;
+
+#ifdef CONFIG_SECCOMP_ANDROID_GETDENTS_WORKAROUND
+		if (this_syscall == __NR_getdents)
+			return 0;
+		else
+#endif
 		ret = seccomp_run_filters(this_syscall);
 		data = ret & SECCOMP_RET_DATA;
 		ret &= SECCOMP_RET_ACTION;

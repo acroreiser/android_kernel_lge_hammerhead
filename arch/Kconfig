@@ -243,6 +243,10 @@ config SECCOMP_FILTER
 
 	  See Documentation/prctl/seccomp_filter.txt for details.
 
+config SECCOMP_ANDROID_GETDENTS_WORKAROUND
+	bool "ANDROID: seccomp workaround for getdents syscall for Android 16 QPR2+ on 32-bit kernel"
+	depends on SECCOMP_FILTER
+
 config HAVE_ARCH_MMAP_RND_BITS
 	bool
 	help
