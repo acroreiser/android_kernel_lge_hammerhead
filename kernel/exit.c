@@ -1452,6 +1452,10 @@ static int wait_task_stopped(struct wait_opts *wo,
 		goto unlock_sig;
 
 	exit_code = *p_code;
+
+	if (!exit_code && ptrace)
+		exit_code = SIGTRAP;
+
 	if (!exit_code)
 		goto unlock_sig;
 
