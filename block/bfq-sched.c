@@ -1048,6 +1048,7 @@ static struct bfq_entity *bfq_lookup_next_entity(struct bfq_sched_data *sd,
 			if (extract) {
 				if (sd->next_in_service != entity) {
 					entity = __bfq_lookup_next_entity(st + i, true);
+					sd->next_in_service = entity;
 				}
 				bfq_check_next_in_service(sd, entity);
 				bfq_active_extract(st + i, entity);
