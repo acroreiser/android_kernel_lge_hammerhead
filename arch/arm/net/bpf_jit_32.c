@@ -1554,8 +1554,14 @@ exit:
 			break;
 		case BPF_DW:
 			/* Load a double word */
-			emit_ldx_r(dst_lo, rn, dstk, off, ctx, BPF_W);
-			emit_ldx_r(dst_hi, rn, dstk, off+4, ctx, BPF_W);
+			if (dst_lo == rn) {
+				/* base would be clobbered: hi first */
+				emit_ldx_r(dst_hi, rn, dstk, off+4, ctx, BPF_W);
+				emit_ldx_r(dst_lo, rn, dstk, off,   ctx, BPF_W);
+			} else {
+				emit_ldx_r(dst_lo, rn, dstk, off,   ctx, BPF_W);
+				emit_ldx_r(dst_hi, rn, dstk, off+4, ctx, BPF_W);
+			}
 			break;
 		}
 		break;
