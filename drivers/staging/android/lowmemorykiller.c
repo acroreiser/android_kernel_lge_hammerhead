@@ -69,6 +69,7 @@ static int lowmem_minfree_size = 4;
 
 static unsigned long lowmem_deathpending_timeout;
 static unsigned long lowmem_kill_timeout_ms = 100; // matches lmkd
+static bool lowmem_disable = false;
 
 #define lowmem_print(level, x...)			\
 	do {						\
@@ -285,6 +286,9 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		global_page_state(NR_ACTIVE_FILE) +
 		global_page_state(NR_INACTIVE_ANON) +
 		global_page_state(NR_INACTIVE_FILE);
+
+	if (lowmem_disable)
+		return rem;
 
 	if (is_secondary_kswapd())
 		return rem;
@@ -551,6 +555,7 @@ module_param_array_named(adj, lowmem_adj, int, &lowmem_adj_size,
 module_param_array_named(minfree, lowmem_minfree, uint, &lowmem_minfree_size,
 			 S_IRUGO | S_IWUSR);
 module_param_named(kill_timeout_ms, lowmem_kill_timeout_ms, uint, S_IRUGO | S_IWUSR);
+module_param_named(disable, lowmem_disable, uint, S_IRUGO | S_IWUSR);
 module_param_named(debug_level, lowmem_debug_level, uint, S_IRUGO | S_IWUSR);
 
 module_init(lowmem_init);
