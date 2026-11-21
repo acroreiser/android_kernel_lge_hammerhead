@@ -1727,9 +1727,6 @@ static int init_digital_gyro(void)
 		UcCntPla++;
 	} while ((UcRamIni0 & 0x02) && (UcCntPla < INIDGY_POLLING_LIMIT_A));
 
-	if (UcCntPla == INIDGY_POLLING_LIMIT_A)
-		return OIS_FW_POLLING_FAIL;
-
 	with_time(2);
 	spigyrocheck = UcRamIni0;
 
@@ -1755,9 +1752,6 @@ static int init_digital_gyro(void)
 		reg_read_addr(GRADT0H, &UcRamIni1);  /* 0x0390 */
 		UcCntPlb++;
 	} while ((UcRamIni1 & 0x01) && (UcCntPlb < INIDGY_POLLING_LIMIT_B));
-
-	if (UcCntPlb == INIDGY_POLLING_LIMIT_B)
-		return OIS_FW_POLLING_FAIL;
 
 	reg_write_addr(GIFDIV, UcRegBak); /* 48MHz / 3 = 16MHz */
 	reg_write_addr(GRINI, 0x80);      /* SPI Clock = 16MHz / 4 = 4MHz */
