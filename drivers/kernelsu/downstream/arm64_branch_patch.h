@@ -11,8 +11,8 @@
  *
  */
 
-#ifndef __KSU_H_ARM64_BL_PATCH
-#define __KSU_H_ARM64_BL_PATCH
+#ifndef __H_ARM64_BRANCH_PATCH
+#define __H_ARM64_BRANCH_PATCH
 
 #include <linux/version.h>
 #include <linux/uaccess.h>
@@ -40,7 +40,7 @@ __weak s32 aarch64_get_branch_offset(u32 insn)
 #endif
 
 /**
- * arm64_branch_patch(): hunt and patch first b or bl insn found with target
+ * arm64_branch_patch(): hunt and patch all b or bl insn found within target
  *
  * @target_callsite: callsite on where to start scanning for (ptr / fn_ptr)
  * @target_width: how far to scan for (bytes / ptrdiff)
@@ -53,7 +53,6 @@ __weak s32 aarch64_get_branch_offset(u32 insn)
  * - safe to run early or within kernel threads.
  *
  * NOTES:
- * - do NOT use directly! use helpers below!
  * - both symbol_addr and hook_addr must be inside +/-128MB ptrdiff to callsite! else ret -ERANGE
  * - if target bl not found within target_width, ret -ENOENT
  * - returns 0 on success.
@@ -63,7 +62,7 @@ __weak s32 aarch64_get_branch_offset(u32 insn)
 #define BRANCH_TYPE_B		1
 #define BRANCH_TYPE_BL		2
 #define BRANCH_TYPE_B_OR_BL	3
-static noinline int arm64_branch_patch(uintptr_t target_callsite, ptrdiff_t target_width, uintptr_t symbol_addr, uintptr_t hook_addr, uint8_t type)
+nodiscard static noinline int arm64_branch_patch(uintptr_t target_callsite, ptrdiff_t target_width, uintptr_t symbol_addr, uintptr_t hook_addr, uint8_t type)
 {
 	if (!target_callsite || !symbol_addr) {
 		pr_info("%s: no callsite or symbol addr specified!\n", __func__);
@@ -72,11 +71,21 @@ static noinline int arm64_branch_patch(uintptr_t target_callsite, ptrdiff_t targ
 
 	might_sleep();
 
+	constexpr ptrdiff_t bl_max_delta = (1L << 25) * sizeof(uint32_t); // 26 bits signed * insn size
 	uintptr_t start_addr = (uintptr_t)target_callsite;
 	uintptr_t end_addr = start_addr + target_width;
+
+	ptrdiff_t hook_to_start = (ptrdiff_t)hook_addr - (ptrdiff_t)start_addr;
+	ptrdiff_t hook_to_end = (ptrdiff_t)hook_addr - (ptrdiff_t)end_addr;
+	if (__builtin_labs(hook_to_start) >= bl_max_delta || __builtin_labs(hook_to_end) >= bl_max_delta) {
+		pr_info("%s: callsite: 0x%lx ~ 0x%lx hook: 0x%lx out of range!\n", __func__, start_addr, end_addr, hook_addr);
+		return -ERANGE;
+	}
+//	pr_info("%s: scan window start: 0x%lx end: 0x%lx in range to hook: 0x%lx deltas: %ld / %ld \n", __func__, start_addr, end_addr, hook_addr, hook_to_start, hook_to_end);
+
 	uintptr_t curr_addr = start_addr;
 	uint32_t raw_instruction; // arm64 wordsize
-	constexpr ptrdiff_t bl_max_delta = (1L << 25) * sizeof(uint32_t); // 26 bits signed * insn size
+	unsigned int patched = 0;
 
 start_scan:
 	if (curr_addr >= end_addr)
@@ -110,20 +119,16 @@ start_scan:
 	if (calculated_destination != symbol_addr)
 		goto step_up;
 
-	pr_info("%s: found call site at 0x%lx\n", __func__, curr_addr);
+	pr_info("%s: found call site at 0x%lx w/ .inst 0x%x \n", __func__, curr_addr, raw_instruction);
 
-	ptrdiff_t delta = 0;
-	if (hook_addr > curr_addr)
-		delta = hook_addr - curr_addr;
-	else
-		delta = curr_addr - hook_addr;
-		
-	if (delta >= bl_max_delta) {
+	ptrdiff_t delta = hook_addr - curr_addr;
+	if (__builtin_labs(delta) >= bl_max_delta) {
+		__builtin_unreachable(); // see range check above
 		pr_info("%s: callsite 0x%lx to hook 0x%lx out of range! (delta: %ld bytes)\n",  __func__, curr_addr, hook_addr, delta);
 		return -ERANGE;
 	}
 
-	pr_info("%s: callsite 0x%lx to hook 0x%lx inside range! (delta: %ld bytes)\n",  __func__, curr_addr, hook_addr, delta);
+	pr_info("%s: callsite: 0x%lx hook: 0x%lx (delta: %ld bytes)\n",  __func__, curr_addr, hook_addr, delta);
 
 	uint32_t insn;
 	if (aarch64_insn_is_bl(raw_instruction))
@@ -135,57 +140,27 @@ start_scan:
 	uint32_t arr_insn[] = { insn };
 
 	int res = aarch64_insn_patch_text(arr_addr, arr_insn, 1);
-	pr_info("%s: patched callsite: 0x%lx ret: %d\n", __func__, curr_addr, res);
-
-	return res;
+	pr_info("%s: callsite: 0x%lx patch result: %d\n", __func__, curr_addr, res);
+	if (!res)
+		patched++;
 
 step_up:
 	curr_addr = curr_addr + sizeof(uint32_t);
 	goto start_scan;
 
 bail:
-	pr_info("%s: callsite instruction not found!\n", __func__);
-	return -ENOENT;
+	if (!patched) {
+		pr_info("%s: callsite instruction not found!\n", __func__);
+		return -ENOENT;
+	}
+
+	if (patched > 1)
+		pr_info("%s: patch count: %d\n", __func__, patched);
+	return 0;
 }
 
-/**
- * arm64_b_patch() - hunt and patch the first b insn targeting @symbol_addr.
- * @target_callsite: callsite on where to start scanning for (ptr / fn_ptr)
- * @target_width: how far to scan for (bytes / ptrdiff)
- * @symbol_addr: symbol being called to look for at the site (fn_ptr)
- * @hook_addr: symbol to redirect "b symbol_addr" to (fn_ptr)
- */
-static inline int arm64_b_patch(uintptr_t target_callsite, ptrdiff_t target_width, uintptr_t symbol_addr, uintptr_t hook_addr)
-{
-	return arm64_branch_patch(target_callsite, target_width, symbol_addr, hook_addr, BRANCH_TYPE_B);
-}
+#define arm64_b_patch(tgt, width, symaddr, hookaddr)		arm64_branch_patch(tgt, width, symaddr, hookaddr, BRANCH_TYPE_B)
+#define arm64_bl_patch(tgt, width, symaddr, hookaddr)		arm64_branch_patch(tgt, width, symaddr, hookaddr, BRANCH_TYPE_BL)
+#define arm64_b_or_bl_patch(tgt, width, symaddr, hookaddr)	arm64_branch_patch(tgt, width, symaddr, hookaddr, BRANCH_TYPE_B_OR_BL)
 
-/**
- * arm64_bl_patch() - hunt and patch the first bl insn targeting @symbol_addr.
- * @target_callsite: callsite on where to start scanning for (ptr / fn_ptr)
- * @target_width: how far to scan for (bytes / ptrdiff)
- * @symbol_addr: symbol being called to look for at the site (fn_ptr)
- * @hook_addr: symbol to redirect "b symbol_addr" to (fn_ptr)
- */
-static inline int arm64_bl_patch(uintptr_t target_callsite, ptrdiff_t target_width, uintptr_t symbol_addr, uintptr_t hook_addr)
-{
-	return arm64_branch_patch(target_callsite, target_width, symbol_addr, hook_addr, BRANCH_TYPE_BL);
-}
-
-/**
- * arm64_b_or_bl_patch() - hunt and patch the first 'b' or 'bl' insn targeting @symbol_addr.
- * @target_callsite: callsite on where to start scanning for (ptr / fn_ptr)
- * @target_width: how far to scan for (bytes / ptrdiff)
- * @symbol_addr: symbol being called to look for at the site (fn_ptr)
- * @hook_addr: symbol to redirect "b symbol_addr" to (fn_ptr)
- */
-static inline int arm64_b_or_bl_patch(uintptr_t target_callsite, ptrdiff_t target_width, uintptr_t symbol_addr, uintptr_t hook_addr)
-{
-	return arm64_branch_patch(target_callsite, target_width, symbol_addr, hook_addr, BRANCH_TYPE_B_OR_BL);
-}
-
-#undef BRANCH_TYPE_B
-#undef BRANCH_TYPE_BL
-#undef BRANCH_TYPE_B_OR_BL
-
-#endif // __KSU_H_ARM64_BL_PATCH
+#endif // __H_ARM64_BRANCH_PATCH

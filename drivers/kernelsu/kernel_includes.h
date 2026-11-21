@@ -65,12 +65,14 @@
 #include <linux/input.h>
 #include <linux/ioctl.h>
 #include <linux/jump_label.h>
+#include <linux/kallsyms.h>
 #include <linux/kernel.h>
 #include <linux/key.h>
 #include <linux/kobject.h>
 #include <linux/kref.h>
 #include <linux/kthread.h>
 #include <linux/limits.h>
+#include <linux/linkage.h>
 #include <linux/list.h>
 #include <linux/lockdep.h>
 #include <linux/lsm_audit.h>
@@ -96,6 +98,7 @@
 #include <linux/seccomp.h>
 #include <linux/security.h>
 #include <linux/seq_file.h>
+#include <linux/shmem_fs.h>
 #include <linux/slab.h>
 #include <linux/stddef.h>
 #include <linux/string.h>
@@ -139,12 +142,6 @@
 #include <uapi/linux/input.h>
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0)
-#include <uapi/asm-generic/errno.h>
-#else
-#include <asm-generic/errno.h>
-#endif
-
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 11, 0)
 #include <crypto/sha2.h>
 #else
@@ -160,7 +157,7 @@
 #endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
-#include <uapi/linux/eventpoll.h>
+#include <linux/eventpoll.h>
 #endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
@@ -271,6 +268,25 @@ typedef typeof(nullptr) nullptr_t;
 #endif
 
 /**
+ * __overloaded
+ * - not a thing, just communicates intent, for annotation purposes
+ */
+#define __overloaded
+
+/**
+ * __overloadable
+ * now this is an actual thing, however, Clang only.
+ * this enables Cpp-like fn overloading (same fn names, compiler resolved)
+ * so you also get Cpp symbol mangling, c++filt is your friend.
+ * no gcc equivalent.
+ */
+#if defined(__clang__)
+#define __overloadable	__attribute__((overlodable))
+#else
+#define __overloadable
+#endif
+
+/**
  * static_assert is C23
  * this has an alternative available on C11 capable compilers.
  * ref: https://elixir.bootlin.com/linux/v5.1/source/include/linux/build_bug.h
@@ -282,7 +298,7 @@ typedef typeof(nullptr) nullptr_t;
 #define __static_assert(expr, msg, ...) _Static_assert(expr, msg)
 #define static_assert(expr, ...) __static_assert(expr, ##__VA_ARGS__, #expr)
 #endif
-#if defined(KSU_HAS_C23) && defined(static_assert)
+#if defined(KSU_HAS_C23) && defined(static_assert) // undef kernel's static_assert
 #undef static_assert
 #endif
 
@@ -306,7 +322,7 @@ typedef typeof(nullptr) nullptr_t;
 #elif __has_attribute(__fallthrough__) || defined(__clang__)
 #define fallthrough __attribute__((__fallthrough__))
 #else
-#define fallthrough do {} while (0) /* fallthrough */
+#define fallthrough do { } while (0) /* fallthrough */
 #endif
 #endif
 
@@ -315,8 +331,8 @@ typedef typeof(nullptr) nullptr_t;
  */
 #if defined(__clang__)
 #define assume(expr) __builtin_assume(expr)
-#elif defined(__GNUC__) && (__GNUC__ >= 13)
-#define assume(expr) __attribute__((assume(expr)))
+//#elif defined(__GNUC__) && (__GNUC__ >= 13)
+//#define assume(expr) __attribute__((assume(expr)))
 #else
 #define assume(expr) do {			\
 	if (unlikely(!(expr)))			\
@@ -419,12 +435,11 @@ typedef unsigned __int128 uint128_t;
 
 /**
  * __may_alias to workaround "optimizations" even on -fno-strict-aliasing
- *
  */
 #define __may_alias __attribute__((__may_alias__))
 
 /**
- * __attribute__((__cleanup__()))
+ * __attribute__((__cleanup__(fn)))
  * - pseudo-raii / defer / scoped cleanup on C 
  *
  * NOTE: passes address of variable attributed to fn()
@@ -440,13 +455,13 @@ typedef unsigned __int128 uint128_t;
 
 // scoped lock, mutex
 static inline void mutex_unlock_byref(struct mutex **m) { mutex_unlock(*m); }
-#define deferred_mutex_unlock(lock) struct mutex *__ksu_dummy_var __cleanup(mutex_unlock_byref) = (lock)
-#define guarded_mutex_lock(lock) ({ mutex_lock(lock); deferred_mutex_unlock(lock); 1; })
+#define deferred_mutex_unlock(lock)	struct mutex *__ksu_dummy_var __cleanup(mutex_unlock_byref) = (lock)
+#define guarded_mutex_lock(lock)	mutex_lock(lock); deferred_mutex_unlock(lock)
 
 // scoped lock, spinlock
 static inline void spin_unlock_byref(spinlock_t **lock) { spin_unlock(*lock); }
-#define deferred_spin_unlock(lock) spinlock_t *__ksu_dummy_var __cleanup(spin_unlock_byref) = (lock)
-#define guarded_spin_lock(lock) ({ spin_lock(lock); deferred_spin_unlock(lock); 1; })
+#define deferred_spin_unlock(lock)	spinlock_t *__ksu_dummy_var __cleanup(spin_unlock_byref) = (lock)
+#define guarded_spin_lock(lock)		spin_lock(lock); deferred_spin_unlock(lock)
 
 // scoped allocations and basic stack offload.
 static inline void kfree_byref(void *buf) { kfree(*(void **)buf); }
@@ -486,25 +501,28 @@ static inline void kfree_byref(void *buf) { kfree(*(void **)buf); }
 #endif // !CONFIG_KSU_DEBUG
 
 /**
- * redirect all dmesg/printk logging messages to kernel's no_printk macro.
- * this is an option offerred to shut up KernelSU's routine logging.
+ * no-op all dmesg/printk logging messages
+ * option offerred to shut up KernelSU's logging.
  *
  */
 #if defined(CONFIG_KSU_NOPRINTK) && !defined(CONFIG_KSU_DEBUG)
-#ifndef no_printk
-#define no_printk(...) do { } while (0)
-#endif
-#define pr_emerg(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define pr_alert(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define pr_crit(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define pr_err(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define pr_warn(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define pr_notice(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define pr_info(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define pr_debug(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define pr_devel(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
-#define printk(fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
+#define pr_emerg(...)	do { } while (0)
+#define pr_alert(...)	do { } while (0)
+#define pr_crit(f...)	do { } while (0)
+#define pr_err(...)	do { } while (0)
+#define pr_warn(...)	do { } while (0)
+#define pr_notice(...)	do { } while (0)
+#define pr_info(...)	do { } while (0)
+#define pr_debug(...)	do { } while (0)
+#define pr_devel(...)	do { } while (0)
+#define printk(...)	do { } while (0)
 #endif // CONFIG_KSU_NOPRINTK && !CONFIG_KSU_DEBUG
+
+// no ratelimit
+#ifdef pr_warn_ratelimited
+#undef pr_warn_ratelimited
+#endif
+#define pr_warn_ratelimited pr_warn
 
 /**
  * disallow usage of old string functions removed on newer linux kernels
