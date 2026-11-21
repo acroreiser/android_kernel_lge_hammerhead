@@ -226,7 +226,11 @@ scan_start:
 
 step_up:;
 	size_t sym_sz = sizeof(uint32_t);
+#if defined(CONFIG_ARM)
+	if (slash && !!kstrtouint(slash + 1, 0, &sym_sz))
+#else
 	if (slash && !!kstrtoul(slash + 1, 0, &sym_sz))
+#endif
 		sym_sz = sizeof(uint32_t);
 
 	curr = curr + sym_sz;
