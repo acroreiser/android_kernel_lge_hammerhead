@@ -199,8 +199,9 @@ static inline pte_t *pmd_page_vaddr(pmd_t pmd)
 #define __pte_map(pmd)		pmd_page_vaddr(*(pmd))
 #define __pte_unmap(pte)	do { } while (0)
 #else
+#include <asm/highmem.h>
 #define __pte_map(pmd)		(pte_t *)kmap_atomic(pmd_page(*(pmd)))
-#define __pte_unmap(pte)	kunmap_atomic(pte)
+#define __pte_unmap(pte)	__kunmap_atomic(pte)
 #endif
 
 #define pte_index(addr)		(((addr) >> PAGE_SHIFT) & (PTRS_PER_PTE - 1))
