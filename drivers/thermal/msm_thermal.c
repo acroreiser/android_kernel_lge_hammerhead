@@ -30,6 +30,15 @@
 unsigned int temp_threshold = 70;
 module_param(temp_threshold, int, 0644);
 
+/*
+ * A step is only relaxed once the temperature has dropped this many degrees
+ * below the point where that step kicked in (on top of the per-step hold
+ * time), so the frequency does not bounce around the threshold.
+ */
+static unsigned int temp_hysteresis = 3;
+module_param(temp_hysteresis, uint, 0644);
+MODULE_PARM_DESC(temp_hysteresis, "degC below a step's trip point before it is relaxed");
+
 struct thermal_info {
 	uint32_t max_freq;
 	uint32_t time_left;
@@ -49,6 +58,9 @@ static struct thermal_info info = {
 	.throttling = false,
 	.pending_change = false
 };
+
+/* current frequency cap in kHz, UINT_MAX when not throttled */
+module_param_named(max_freq, info.max_freq, uint, 0444);
 
 static struct thermal_level levels[] = {
 	{ .diff = 15, .freq = 729600,  .time = 4000 },
@@ -104,31 +116,51 @@ static bool limit_cpu_freq(uint32_t freq, uint32_t time, uint32_t time_passed)
 	return true;
 }
 
+/* index of the step whose cap is @freq, -1 if @freq is not a step */
+static int level_of_freq(uint32_t freq)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(levels); i++)
+		if (levels[i].freq == freq)
+			return i;
+	return -1;
+}
+
 static void check_temp(struct work_struct *work)
 {
 	struct tsens_device tsens_dev;
 	long temp = 0;
-	int i = 0;
+	int want = -1, cur, i;
 
 	tsens_dev.sensor_num = msm_thermal_info.sensor_id;
 	tsens_get_temp(&tsens_dev, &temp);
 
-	if (info.throttling) {
-		if (temp < temp_threshold) {
+	/* levels[] goes from the strongest step (index 0) to the weakest */
+	for (i = 0; i < ARRAY_SIZE(levels); i++) {
+		if (temp > (long)temp_threshold + levels[i].diff) {
+			want = i;
+			break;
+		}
+	}
+
+	/*
+	 * Relaxing (a weaker step, or no limit at all) has to wait until the
+	 * temperature is temp_hysteresis below where the current step starts.
+	 */
+	cur = info.throttling ? level_of_freq(info.max_freq) : -1;
+	if (cur >= 0 && (want < 0 || want > cur) &&
+	    temp > (long)temp_threshold + levels[cur].diff - (long)temp_hysteresis)
+		want = cur;
+
+	if (want < 0) {
+		if (info.throttling)
 			info.throttling = !limit_cpu_freq(UINT_MAX, 0, MSM_THERMAL_WORK_TIMEOUT);
-			goto reschedule;
-		}
+	} else {
+		limit_cpu_freq(levels[want].freq, levels[want].time, MSM_THERMAL_WORK_TIMEOUT);
+		info.throttling = true;
 	}
 
-	for (i = 0; i < sizeof(levels)/sizeof(struct thermal_level); i++) {
-		if (temp > temp_threshold + levels[i].diff) {
-			limit_cpu_freq(levels[i].freq, levels[i].time, MSM_THERMAL_WORK_TIMEOUT);
-			info.throttling = true;
-			goto reschedule;
-		}
-	}
-
-reschedule:
 	queue_delayed_work(thermal_wq, &check_temp_work, msecs_to_jiffies(MSM_THERMAL_WORK_TIMEOUT));
 }
 
