@@ -205,6 +205,9 @@ extern struct page *__page_cache_alloc(gfp_t gfp);
 #else
 static inline struct page *__page_cache_alloc(gfp_t gfp)
 {
+	if (gfp & __GFP_HIGHMEM)
+		gfp |= __GFP_HIGHMEM_ONLY;
+
 	return alloc_pages(gfp, 0);
 }
 #endif

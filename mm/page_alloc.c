@@ -1899,6 +1899,12 @@ zonelist_scan:
 		if ((alloc_flags & ALLOC_CPUSET) &&
 			!cpuset_zone_allowed_softwall(zone, gfp_mask))
 				continue;
+
+		if ((gfp_mask & __GFP_HIGHMEM_ONLY) && zone_idx(zone) < ZONE_HIGHMEM) {
+			if (!(alloc_flags & ALLOC_NO_WATERMARKS))
+				continue;
+		}
+
 		/*
 		 * When allocating a page cache page for writing, we
 		 * want to get it from a zone that is within its dirty
@@ -2155,6 +2161,9 @@ __alloc_pages_may_oom(gfp_t gfp_mask, unsigned int order,
 		if (gfp_mask & __GFP_THISNODE)
 			goto out;
 	}
+
+	gfp_mask &= ~__GFP_HIGHMEM_ONLY;
+
 	/* Exhausted what can be done so it's blamo time */
 	out_of_memory(zonelist, gfp_mask, order, nodemask, false);
 

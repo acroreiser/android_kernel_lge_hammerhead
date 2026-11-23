@@ -38,6 +38,7 @@ struct vm_area_struct;
 #define ___GFP_NO_KSWAPD	0x400000u
 #define ___GFP_OTHER_NODE	0x800000u
 #define ___GFP_WRITE		0x1000000u
+#define ___GFP_HIGHMEM_ONLY   0x2000000u
 
 /*
  * GFP bitmasks..
@@ -96,6 +97,8 @@ struct vm_area_struct;
  * allocations that simply cannot be supported (e.g. page tables).
  */
 #define __GFP_NOTRACK_FALSE_POSITIVE (__GFP_NOTRACK)
+
+#define __GFP_HIGHMEM_ONLY    ((__force gfp_t)___GFP_HIGHMEM_ONLY)
 
 #define __GFP_BITS_SHIFT 26	/* Room for N __GFP_FOO bits */
 #define __GFP_BITS_MASK ((__force gfp_t)((1 << __GFP_BITS_SHIFT) - 1))
