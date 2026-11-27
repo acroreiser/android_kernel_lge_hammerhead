@@ -80,6 +80,13 @@ config ANDROID_TIMED_GPIO
 	depends on GENERIC_GPIO && ANDROID_TIMED_OUTPUT
 	default n
 
+config ANDROID_LOW_MEMORY_KILLER_STUB
+	bool "Stub for Android Low Memory Killer"
+	default N
+	---help---
+	  Provides sysfs interface of legacy Android Low Memory Killer to
+	  deactivate AOSP LMKD in favor of custom userspace or kernelspace LMK.
+
 source "drivers/staging/android/switch/Kconfig"
 
 endif # if ANDROID
